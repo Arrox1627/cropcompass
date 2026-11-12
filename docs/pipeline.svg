@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif">
+  <title>cropcompass pipeline: find the subject, place the crop, assign frames</title>
+  <style>
+    .bg { fill: #f4f1ea; }
+    .card { fill: #fbfaf6; stroke: #d9d3c7; stroke-width: 1.5; }
+    .h { font-size: 22px; font-weight: 700; fill: #161514; }
+    .n { font-size: 14px; font-weight: 700; fill: #1f3fd6; letter-spacing: 0.08em; }
+    .t { font-size: 15px; fill: #4f4a43; }
+    .arrow { stroke: #1f3fd6; stroke-width: 3; fill: none; marker-end: url(#a); }
+    .photo { fill: #e9d9c2; stroke: #b9ab95; }
+    .subject { fill: #c4372b; }
+    .box { fill: none; stroke: #1f3fd6; stroke-width: 3; stroke-dasharray: 6 4; }
+    .frame { fill: none; stroke: #161514; stroke-width: 3; }
+    .dim { fill: rgb(22 21 20 / 0.35); }
+  </style>
+  <defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#1f3fd6"/></marker></defs>
+  <rect class="bg" width="1200" height="420" rx="24"/>
+
+  <!-- 1 -->
+  <rect class="card" x="30" y="30" width="350" height="360" rx="18"/>
+  <text class="n" x="56" y="70">1 · FIND</text>
+  <text class="h" x="56" y="100">Where is the subject?</text>
+  <rect class="photo" x="56" y="122" width="220" height="146" rx="6"/>
+  <rect class="subject" x="86" y="150" width="34" height="96" rx="4"/>
+  <rect class="box" x="78" y="142" width="50" height="112"/>
+  <text class="t" x="56" y="300">Shrink to 96 px. Score each pixel</text>
+  <text class="t" x="56" y="322">for edges + colour. Keep detail</text>
+  <text class="t" x="56" y="344">above the photo's average; take the</text>
+  <text class="t" x="56" y="366">box holding its middle 60%.</text>
+
+  <path class="arrow" d="M386 210 H 418"/>
+
+  <!-- 2 -->
+  <rect class="card" x="425" y="30" width="350" height="360" rx="18"/>
+  <text class="n" x="451" y="70">2 · CROP</text>
+  <text class="h" x="451" y="100">Slide the window onto it</text>
+  <rect class="photo" x="451" y="122" width="220" height="146" rx="6"/>
+  <rect class="subject" x="481" y="150" width="34" height="96" rx="4"/>
+  <rect class="dim" x="571" y="122" width="100" height="146"/>
+  <rect class="frame" x="463" y="122" width="108" height="146"/>
+  <text class="t" x="451" y="300">A 4:5 frame on a 3:2 photo shows</text>
+  <text class="t" x="451" y="322">53% of its width. Centre that window</text>
+  <text class="t" x="451" y="344">on the box (a touch high, for faces),</text>
+  <text class="t" x="451" y="366">clamped to the photo's edges.</text>
+
+  <path class="arrow" d="M781 210 H 813"/>
+
+  <!-- 3 -->
+  <rect class="card" x="820" y="30" width="350" height="360" rx="18"/>
+  <text class="n" x="846" y="70">3 · ASSIGN</text>
+  <text class="h" x="846" y="100">Which photo, which frame?</text>
+  <rect class="frame" x="846" y="126" width="80" height="140" rx="3"/>
+  <rect class="frame" x="938" y="126" width="140" height="64" rx="3"/>
+  <rect class="frame" x="938" y="202" width="140" height="64" rx="3"/>
+  <text class="t" x="846" y="300">Cost = 0.4 × photo lost + 2 × subject</text>
+  <text class="t" x="846" y="322">cut. Try every ordering (≤ 720),</text>
+  <text class="t" x="846" y="344">favourites keep the big frames, and</text>
+  <text class="t" x="846" y="366">still-tight frames are flagged.</text>
+</svg>
