@@ -3,6 +3,8 @@
 **Subject-aware cropping for photo layouts, with no neural network and no dependencies.**
 It finds where the subject of a photo is, slides each frame's crop onto it, and gives every photo the frame shape it suits. It runs in the browser in a millisecond or two per photo.
 
+**[Try the live demo →](https://arrox1627.github.io/cropcompass/demo/)** Drop in your own photos; they never leave your browser.
+
 ![The demo: a centre crop misses the lighthouse, cropcompass frames it](docs/demo.png)
 
 Built for photo-book layouts, where a template pours dozens of photos into fixed frames of different shapes. With a plain centre crop, the person standing on the left of a landscape photo ends up cut out of the portrait frame they land in. cropcompass keeps them in.
