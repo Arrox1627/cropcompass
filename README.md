@@ -82,7 +82,7 @@ On the multi-subject benchmark it finds **96.8%** of the subjects, with no false
 
 1. **Load once.** `loadFaceDetector()` fetches MediaPipe's runtime (about 9 MB of WebAssembly) and the BlazeFace short-range model (230 KB) from public CDNs. The browser caches both.
 2. **Look at several scales.** The model sees a photo at 128 × 128, where a face a few metres away is only a few pixels. So it runs on the whole photo and on overlapping tiles in 2 × 2, 3 × 3 and 4 × 4 grids, each tile enlarged.
-3. **Be stricter on small tiles.** Smaller tiles make the model guess more, so the confidence needed rises from 0.5 (the whole photo) to 0.7 (4 × 4 tiles). On real photos, true faces scored 0.72 and up on the smallest tiles, and mistakes 0.56 and below.
+3. **Only confident faces count.** Each level needs its own confidence, set from measurements on real photos and on a painting with no people in it. The whole photo and 2 × 2 tiles need 0.75: real faces scored 0.77 and up there, mistakes 0.64 and below. The 4 × 4 tiles need 0.7: real faces scored 0.72 and up, mistakes 0.66 and below. A "face" wider than 60% of the photo is rejected as a mistake.
 4. **Merge duplicates.** The same face found in several tiles is merged (intersection over union above 0.3), keeping the most confident.
 5. **Faces become people.** Each face box is widened to head and shoulders (2.4 × as wide, 3.2 × as tall) and weighted by its size, since nearer faces usually matter more.
 6. **Keep the rest.** `combineSubjects` adds anything else that stands out and isn't a person (a dog, a boat, a cake) at 40% of its weight, so people come first.

@@ -31,8 +31,14 @@ export const FACE_MODELS = {
  * merged, so distant faces in couple and group photos are found too.
  */
 export const TILE_GRIDS = [1, 2, 3, 4];
-/** Smaller tiles make the model guess more, so each grid needs more confidence (measured on real photos: real faces 0.72 and up in 4 × 4 tiles, mistakes 0.56 and below). */
-const MIN_SCORE = { 1: 0.5, 2: 0.55, 3: 0.62, 4: 0.7 };
+/**
+ * The confidence each grid needs, measured on real photos and a painting with no people:
+ * on the whole photo and 2 × 2 tiles real faces scored 0.77 and up, mistakes 0.64 and below;
+ * on 4 × 4 tiles real faces scored 0.72 and up, mistakes 0.66 and below.
+ */
+const MIN_SCORE = { 1: 0.75, 2: 0.75, 3: 0.62, 4: 0.7 };
+/** A "face" wider than this share of the photo is a mistake (a close-up selfie face is about half). */
+const MAX_FACE = 0.6;
 /** How much neighbouring tiles overlap, as a share of a tile. */
 const TILE_OVERLAP = 0.25;
 
@@ -135,7 +141,7 @@ export async function loadFaceDetector({ model = 'short', runtime = FACE_RUNTIME
             for (const d of detector.detect(canvas).detections ?? []) {
               const b = d.boundingBox;
               const score = d.categories?.[0]?.score ?? 0;
-              if (score < (MIN_SCORE[n] ?? 0.75)) continue;
+              if (score < (MIN_SCORE[n] ?? 0.75) || b.width / k > width * MAX_FACE) continue;
               found.push({ originX: sx + b.originX / k, originY: sy + b.originY / k, width: b.width / k, height: b.height / k, score });
             }
           }
