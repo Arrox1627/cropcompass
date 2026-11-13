@@ -1,7 +1,7 @@
 {
   "name": "cropcompass",
   "version": "1.0.0",
-  "description": "Subject-aware cropping for photo layouts: an optional in-browser face-detection model for people, classic computer vision for everything else. Finds the subjects, crops on them, and gives each photo the frame it suits.",
+  "description": "Subject-aware cropping for photo layouts: an optional in-browser object-detection model for people and things, classic computer vision for everything else. Finds the subjects, crops on them, and gives each photo the frame it suits.",
   "type": "module",
   "main": "src/index.js",
   "exports": "./src/index.js",
@@ -15,10 +15,11 @@
   },
   "keywords": [
     "computer-vision",
-    "face-detection",
+    "efficientdet",
     "image-cropping",
     "machine-learning",
     "mediapipe",
+    "object-detection",
     "object-position",
     "photo-layout",
     "saliency",

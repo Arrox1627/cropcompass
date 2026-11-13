@@ -1,7 +1,7 @@
 # cropcompass
 
-**Subject-aware cropping for photo layouts: a small face-detection model for people, classic computer vision for everything else.**
-It finds the subjects of a photo, slides each frame's crop onto them, and gives every photo the frame shape it suits. It runs entirely in the browser. The core has no dependencies; the face model is optional and loads only when you ask for it.
+**Subject-aware cropping for photo layouts: a small object-detection model for people and things, classic computer vision for everything else.**
+It finds the subjects of a photo, slides each frame's crop onto them, and gives every photo the frame shape it suits. It runs entirely in the browser. The core has no dependencies; the detection model is optional and loads only when you ask for it.
 
 **[Try the live demo →](https://arrox1627.github.io/cropcompass/demo/)** Drop in your own photos; they never leave your browser.
 
@@ -26,17 +26,19 @@ Built for photo-book layouts, where a template pours dozens of photos into fixed
 
 <sub>Run `npm run bench` to reproduce. *Best possible crops on the true subjects; often a frame simply can't hold them all. The scenes have clear subjects on a plain background, so this is a best case for every method. See [Limits](#limits) for where real photos are harder.</sub>
 
-**Real photos, where people stand close together on busy backgrounds**, are where edges and colour alone fall short: the brick wall or the café table between two people links them into one cluster. The optional face model fixes most of these:
+**Real photos, where people stand close together on busy backgrounds**, are where edges and colour alone fall short: the brick wall or the café table between two people links them into one cluster. The optional detection model finds each person, from any side:
 
-| Real photo | Edges and colour only | With the face model |
+| Real photo | Edges and colour only | With the detection model |
 | --- | --- | --- |
 | A couple at a café table | 1 subject (both together) | **2 people** |
-| A wedding couple, faces touching | 1 subject | **2 people** |
-| Friends in a skydiving formation | 1 subject | **3 people** |
-| A couple dancing, her face turned away | 1 subject | 1 person (she's missed) |
-| A class photo of 30, faces tiny | 1 subject (the group) | 1 subject (the group) |
+| A wedding couple, heads touching | 1 subject | **2 people** |
+| Friends in a skydiving formation | 1 subject | 1 subject (the formation, as one) |
+| A couple dancing, her back to the camera (4K) | 1 subject | **2 people** |
+| A road trip: friends and their truck | 1 subject | **3 people and the truck** |
+| The Amalfi coast | 1 subject (the cliffs) | **the boats** |
+| A class photo of 30 | 1 subject (the group) | 11 of the 30 people |
 
-<sub>Measured in Chrome on an M-series Mac. With the model, finding the subjects takes 80 to 230 ms a photo, after a one-time download.</sub>
+<sub>Measured in Chrome on an M-series Mac, photos scaled to 4K. With the model, finding the subjects takes 0.25 to 0.65 s a photo, after a one-time download.</sub>
 
 ---
 
@@ -45,9 +47,9 @@ Built for photo-book layouts, where a template pours dozens of photos into fixed
 cropcompass uses machine learning only where it earns its place.
 
 - **Classic computer vision does most of the work.** Landscapes, objects, food, a single person against a plain background: edges and colour find the subject in about a millisecond, with nothing to download, no GPU and no server.
-- **A model is added for people.** Telling two people apart when they stand close together needs something that knows what a face looks like. A 230 KB face-detection model (Google's MediaPipe BlazeFace) does that, in the browser, on the user's own device.
+- **A model is added for people and things.** Telling two people apart when they stand close together needs something that knows what a person looks like, from any side. EfficientDet-Lite2, a small object detector trained on 80 everyday categories, does that, run by Google's MediaPipe in the browser on the user's own device. It also knows a dog, a boat or a bike, and knows that a couch or a bookshelf is background.
 - **No training data, no server, no per-photo bill.** The model is pre-trained and runs locally. Nothing is collected, labelled or uploaded.
-- **Predictable and explainable.** The crop logic is a few lines of arithmetic you can read, test and tune. When the model finds no faces, the heuristics take over, and crops that might cut someone off are flagged for a person to check.
+- **Predictable and explainable.** The crop logic is a few lines of arithmetic you can read, test and tune. When the model finds nothing it recognises, the heuristics take over, and crops that might cut someone off are flagged for a person to check.
 - **It degrades gracefully.** If the model can't load (offline, an old browser), everything still works, just without telling neighbours apart.
 
 ## How it works
@@ -78,14 +80,16 @@ One box is right for one subject, but two friends at opposite ends of a shot wou
 
 On the multi-subject benchmark it finds **96.8%** of the subjects, with no false detections.
 
-### 1c · Find the people (optional, `src/faces.js`)
+### 1c · Find people and things (optional, `src/detect.js`)
 
-1. **Load once.** `loadFaceDetector()` fetches MediaPipe's runtime (about 9 MB of WebAssembly) and the BlazeFace short-range model (230 KB) from public CDNs. The browser caches both.
-2. **Look at several scales.** The model sees a photo at 128 × 128, where a face a few metres away is only a few pixels. So it runs on the whole photo and on overlapping tiles in 2 × 2, 3 × 3 and 4 × 4 grids, each tile enlarged.
-3. **Only confident faces count.** Each level needs its own confidence, set from measurements on real photos and on a painting with no people in it. The whole photo and 2 × 2 tiles need 0.75: real faces scored 0.77 and up there, mistakes 0.64 and below. The 4 × 4 tiles need 0.7: real faces scored 0.72 and up, mistakes 0.66 and below. A "face" wider than 60% of the photo is rejected as a mistake.
-4. **Merge duplicates.** The same face found in several tiles is merged (intersection over union above 0.3), keeping the most confident.
-5. **Faces become people.** Each face box is widened to head and shoulders (2.4 × as wide, 3.2 × as tall) and weighted by its size, since nearer faces usually matter more.
-6. **Keep the rest.** `combineSubjects` adds anything else that stands out and isn't a person (a dog, a boat, a cake) at 40% of its weight, so people come first.
+1. **Load once.** `loadSubjectDetector()` fetches MediaPipe's runtime (about 9 MB of WebAssembly) and the EfficientDet-Lite2 model (about 7.5 MB) from public CDNs. The browser caches both.
+2. **Detect.** The model returns boxes for any of 80 everyday categories, each with a confidence.
+3. **Keep what's worth keeping in view.** People count fully. Animals count 0.8, vehicles and boats 0.5, and things like a cake or a guitar 0.4. Furniture, cups, bottles, plants and other background are ignored, so a bookshelf can never become the subject.
+4. **Only confident detections.** A detection needs a confidence of 0.45. On real photos, a person seen from behind scored 0.65, and mistakes stayed below 0.45.
+5. **People become head and hips.** A person's box is cut to its top 65%, the part that matters in a crop. Each subject is weighted by its kind, its confidence and its size, since nearer usually matters more.
+6. **Keep the rest.** `combineSubjects` adds anything else that stands out and wasn't recognised (a lighthouse, a mountain) at 40% of its weight, so people come first.
+
+I tried a face detector first (BlazeFace). It found a face in a bookshelf and missed everyone facing away, so whole-person detection replaced it.
 
 ### 2 · Place the crop (`cropFor`)
 
@@ -133,7 +137,7 @@ The same approach fits anywhere photos meet fixed frames: e-commerce thumbnails,
 ## Use it
 
 ```js
-import { focusOfImage, subjectsOfImage, loadFaceDetector, combineSubjects, cropFor, keptOf, arrange } from './src/index.js';
+import { focusOfImage, subjectsOfImage, loadSubjectDetector, combineSubjects, cropFor, keptOf, arrange } from './src/index.js';
 
 // 1. When a photo is added (in the browser): find its subject once and keep it.
 const focus = focusOfImage(imgElement);          // { x, y, w, h } as fractions
@@ -142,9 +146,9 @@ const photo = { aspect: img.naturalWidth / img.naturalHeight, focus };
 // ...or every subject in it, each with a weight. `subjects` takes over from `focus`.
 photo.subjects = subjectsOfImage(imgElement);    // [{ x, y, w, h, weight }, ...]
 
-// ...and, to tell people apart, the optional face model (loads once, then cached).
-const faces = await loadFaceDetector();
-photo.subjects = combineSubjects(faces.detect(imgElement), photo.subjects);
+// ...and, to tell people apart, the optional detection model (loads once, then cached).
+const detector = await loadSubjectDetector();
+photo.subjects = combineSubjects(detector.detect(imgElement), photo.subjects);
 
 // 2. Crop it for any frame shape: a CSS object-position.
 const crop = cropFor(photo, 4 / 5);               // { x: 0.12, y: 0.31, zoom: 1 }
@@ -167,9 +171,9 @@ In Node or a worker, pass raw RGBA pixels to `focusFrom(data, width, height)`.
 | `focusOfImage(img)` | The same, from an `<img>`, `ImageBitmap` or canvas, in the browser |
 | `subjectsFrom(rgba, w, h)` | Every subject, heaviest first: `[{ x, y, w, h, weight }]` |
 | `subjectsOfImage(img)` | The same, from an image, in the browser |
-| `loadFaceDetector()` | Loads the optional face model; resolves to `{ detect(img), close() }` |
-| `detect(img)` | Every face as a head-and-shoulders subject, heaviest first |
-| `combineSubjects(faces, subjects)` | People first, plus anything else that stands out |
+| `loadSubjectDetector()` | Loads the optional detection model; resolves to `{ detect(img), close() }` |
+| `detect(img)` | Every person and thing worth keeping in view, as subjects with a `kind`, heaviest first |
+| `combineSubjects(detected, subjects)` | People and things first, plus anything else that stands out |
 | `detailMap(rgba, w, h)` | The per-pixel detail scores (0 to 1), for drawing a heatmap |
 | `cropFor(photo, frameAspect)` | The crop that best shows the subject, as an `object-position` |
 | `cutOf(photo, frameAspect, crop)` | The share of the subject (by weight, with several) a crop leaves out |
@@ -180,7 +184,7 @@ In Node or a worker, pass raw RGBA pixels to `focusFrom(data, width, height)`.
 ## Run it
 
 ```bash
-npm test          # 37 checks, no dependencies (Node 18+)
+npm test          # 38 checks, no dependencies (Node 18+)
 npm run bench     # the benchmark tables above
 npm run demo      # then open http://localhost:3000/demo/ and drop in your own photos
 ```
@@ -190,9 +194,10 @@ npm run demo      # then open http://localhost:3000/demo/ and drop in your own p
 Being honest about where a 96-pixel edge detector falls short:
 
 - **Long, sharp straight lines** (a crisp horizon, a railing, a building edge across the whole frame) count as detail everywhere along them, and can widen the box. Real horizons are usually soft enough not to matter, but a hard one can pull the crop off-centre.
-- **Without the face model, it doesn't know what a face is.** A plain-shirted person against a busy market will lose to the market, and two people close together are one subject.
-- **The face model misses turned-away faces** (a profile, the back of a head, a face behind raised hands) and faces too small even in 4 × 4 tiles (a class photo of 30). Those fall back to edges and colour, so the group is still kept together as one subject.
-- **The face model's runtime is about 9 MB** the first time. It's cached after that, but it's why the model is optional.
+- **Without the detection model, it doesn't know what a person is.** A plain-shirted person against a busy market will lose to the market, and two people close together are one subject.
+- **The detection model treats tightly packed people as one** (a skydiving formation) and misses many in a big group (11 of 30 in a class photo). Wide frames still keep a group together, but a narrow frame may not hold everyone.
+- **It only knows 80 kinds of thing.** A lighthouse or a mountain isn't one of them; those are found by edges and colour instead.
+- **The model and its runtime are about 17 MB** the first time. They're cached after that, but it's why the model is optional.
 - **A small subject on a busy background** (a bird in leaves) has nothing standing out, so it stays centred.
 - **A pale part of a subject** (a white sail against a pale sky) has little edge or colour, so its box can stop short of it.
 - **People close together** become one subject, which is usually what you want for a couple or a group.
@@ -205,7 +210,7 @@ Possible next steps: an optional person detector (whole bodies, so turned-away p
 ```
 src/focus.js      stage 1: the subject box
 src/subjects.js   stage 1b: several subjects, each with its weight
-src/faces.js      stage 1c (optional): people, from a face-detection model
+src/detect.js     stage 1c (optional): people and things, from an object-detection model
 src/crop.js       stages 2 and 3: crops, costs, assignment
 src/index.js      exports
 demo/index.html   interactive demo (drop photos, see centre crop vs cropcompass)

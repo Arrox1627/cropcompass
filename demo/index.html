@@ -33,6 +33,7 @@
   .source img, .source canvas { width: 100%; height: auto; display: block; }
   .source canvas.heat { position: absolute; inset: 0; width: 100%; height: 100%; mix-blend-mode: screen; opacity: 0.85; image-rendering: pixelated; }
   .source .box { position: absolute; border: 2px solid #fff; box-shadow: 0 0 0 1px rgb(0 0 0 / 0.5), 0 0 0 9999px rgb(0 0 0 / 0.28); border-radius: 4px; }
+  .source .box.is-top b { top: 2px; left: 2px; }
   .source .box b { position: absolute; left: -2px; top: -26px; white-space: nowrap; padding: 2px 8px; border-radius: 6px; background: #fff; color: #111; font: 600 12px/1.6 ui-sans-serif, system-ui; }
   .meta { margin: 10px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
   .frames { display: grid; gap: 16px; }
@@ -59,29 +60,29 @@
     <button class="btn btn--soft" type="button" id="sample">Try a sample</button>
     <button class="btn btn--soft" type="button" id="sample2">Two subjects</button>
     <label class="toggle"><input type="checkbox" id="heat" checked> Show the detail map</label>
-    <label class="toggle"><input type="checkbox" id="faces" checked> Find faces with a small ML model</label>
+    <label class="toggle"><input type="checkbox" id="detect" checked> Find people and things with a small ML model</label>
   </div>
-  <p class="meta" id="model" aria-live="polite">Faces are found by Google's MediaPipe BlazeFace model, in your browser. The first photo downloads it once (about 9 MB), and it's cached after that.</p>
+  <p class="meta" id="model" aria-live="polite">People and things are found by an EfficientDet-Lite2 model, run by Google's MediaPipe in your browser. The first photo downloads it once (about 17 MB), and it's cached after that.</p>
   <div class="drop" id="drop">or drop photos here. They never leave your browser.</div>
   <div id="out"></div>
 
-  <footer>Stage 1 finds the subjects: faces with a small ML model, everything else from edges and colour on a 96 px copy. Stage 2 slides each frame's window onto them. <a href="https://github.com/Arrox1627/cropcompass#how-it-works">How it works</a>.</footer>
+  <footer>Stage 1 finds the subjects: people and things with a small ML model, everything else from edges and colour on a 96 px copy. Stage 2 slides each frame's window onto them. <a href="https://github.com/Arrox1627/cropcompass#how-it-works">How it works</a>.</footer>
 </main>
 
 <script type="module">
-  import { FOCUS_SIZE, focusFrom, subjectsFrom, detailMap, cropFor, centreCrop, cutOf, keptOf, loadFaceDetector, combineSubjects } from '../src/index.js';
+  import { FOCUS_SIZE, focusFrom, subjectsFrom, detailMap, cropFor, centreCrop, cutOf, keptOf, loadSubjectDetector, combineSubjects } from '../src/index.js';
 
-  // The face model loads once, on the first photo, if the box is ticked.
-  const facesBox = document.getElementById('faces');
+  // The detection model loads once, on the first photo, if the box is ticked.
+  const detectBox = document.getElementById('detect');
   const modelNote = document.getElementById('model');
   let detector = null;
-  function faceDetector() {
+  function subjectDetector() {
     if (!detector) {
-      modelNote.textContent = 'Loading the face model…';
+      modelNote.textContent = 'Loading the detection model (once, about 17 MB)…';
       const t = performance.now();
-      detector = loadFaceDetector().then(
-        (d) => { modelNote.textContent = `Face model ready in ${Math.round(performance.now() - t)} ms. Photos never leave your browser.`; return d; },
-        () => { modelNote.textContent = 'The face model couldn’t load (are you offline?), so edges and colour find the subjects.'; return null; },
+      detector = loadSubjectDetector().then(
+        (d) => { modelNote.textContent = `Detection model ready in ${Math.round(performance.now() - t)} ms. Photos never leave your browser.`; return d; },
+        () => { modelNote.textContent = 'The detection model couldn’t load (are you offline?), so edges and colour find the subjects.'; return null; },
       );
     }
     return detector;
@@ -130,15 +131,15 @@
     const img = new Image();
     img.onload = async () => {
       const { w, h, data } = small(img);
-      const det = facesBox.checked ? await faceDetector() : null;
+      const det = detectBox.checked ? await subjectDetector() : null;
       const t0 = performance.now();
       const focus = focusFrom(data, w, h);
-      const faces = det ? det.detect(img) : [];
-      const subjects = combineSubjects(faces, subjectsFrom(data, w, h));
+      const detected = det ? det.detect(img) : [];
+      const subjects = combineSubjects(detected, subjectsFrom(data, w, h));
       const ms = performance.now() - t0;
       const aspect = img.naturalWidth / img.naturalHeight;
-      // Faces, or several subjects: crop for all of them. Otherwise: the single focus box.
-      const many = subjects.length > 1 || faces.length > 0;
+      // Detected people and things, or several subjects: crop for all of them. Otherwise: the single focus box.
+      const many = subjects.length > 1 || detected.length > 0;
       const photo = many ? { aspect, subjects } : { aspect, focus };
       const boxes = many ? subjects : [focus];
 
@@ -156,9 +157,9 @@
       source.append(heat);
       boxes.forEach((b, i) => {
         const box = document.createElement('div');
-        box.className = 'box';
+        box.className = b.y < 0.06 ? 'box is-top' : 'box';
         Object.assign(box.style, { left: pct(b.x), top: pct(b.y), width: pct(b.w), height: pct(b.h) });
-        box.innerHTML = `<b>${b.face ? `person ${i + 1}` : many ? `subject ${i + 1}` : 'subject'}</b>`;
+        box.innerHTML = `<b>${b.kind ? `${b.kind} ${i + 1}` : many ? `subject ${i + 1}` : 'subject'}</b>`;
         source.append(box);
       });
 
@@ -166,7 +167,7 @@
       left.append(source);
       const meta = document.createElement('p');
       meta.className = 'meta';
-      const people = faces.length ? `${faces.length} ${faces.length === 1 ? 'face' : 'faces'} (ML model)` : null;
+      const people = detected.length ? `${detected.map((d) => d.kind).join(', ')} (ML model)` : null;
       meta.textContent = `${img.naturalWidth} × ${img.naturalHeight} · ${many ? `${subjects.length} subjects` : 'subject'} found in ${ms.toFixed(1)} ms${people ? `, ${people}` : ''}`;
       left.append(meta);
 
