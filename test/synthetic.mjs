@@ -39,3 +39,34 @@ export function scene(seed, { long = 96 } = {}) {
   });
   return { data, w, h, aspect, truth };
 }
+
+/**
+ * A scene with several subjects (2 or 3) that don't overlap, each textured differently, on the same
+ * kind of soft background. `truths` are their boxes.
+ */
+export function sceneMulti(seed, { long = 96, count } = {}) {
+  const r = rng(seed * 31 + 7);
+  const aspect = [1.5, 1.5, 4 / 3, 16 / 9, 0.75, 1][Math.floor(r() * 6)];
+  const w = aspect >= 1 ? long : Math.round(long * aspect);
+  const h = aspect >= 1 ? Math.round(long / aspect) : long;
+  const n = count ?? 2 + Math.floor(r() * 2);
+  const truths = [];
+  for (let tries = 0; truths.length < n && tries < 200; tries++) {
+    const sw = 0.08 + r() * 0.16, sh = 0.18 + r() * 0.35;
+    const b = { x: r() * (1 - sw), y: r() * (1 - sh), w: sw, h: sh };
+    // Apart from the others by a clear gap (as separate people or things are).
+    const gap = 0.06;
+    if (truths.every((t) => b.x > t.x + t.w + gap || t.x > b.x + b.w + gap || b.y > t.y + t.h + gap || t.y > b.y + b.h + gap)) truths.push(b);
+  }
+  const looks = truths.map(() => [[r() * 255, r() * 255, r() * 255], [r() * 255, r() * 255, r() * 255]]);
+  const top = [120 + r() * 60, 160 + r() * 50, 210 + r() * 40];
+  const bottom = [top[0] - 40, top[1] - 30, top[2] - 50];
+  const noise = rng(seed * 13 + 5);
+  const data = image(w, h, (u, v, x, y) => {
+    const k = truths.findIndex((t) => u >= t.x && u <= t.x + t.w && v >= t.y && v <= t.y + t.h);
+    if (k >= 0) return (x + y * 2) % 3 === 0 || (x * 3 + y) % 5 === 0 ? looks[k][0] : looks[k][1];
+    const nn = (noise() - 0.5) * 6;
+    return top.map((t, i) => t + (bottom[i] - t) * v + nn);
+  });
+  return { data, w, h, aspect, truths };
+}

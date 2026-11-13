@@ -1,7 +1,7 @@
 // Tests: node test/test.mjs (no dependencies). The detail box finds the detail, crops keep it in
 // view where a centre crop would lose it, and arrange() puts photos in the frames they suit.
-import { focusFrom, cleanFocus, cropFor, centreCrop, cutOf, isTight, lossOf, arrange } from '../src/index.js';
-import { image, scene } from './synthetic.mjs';
+import { focusFrom, cleanFocus, cropFor, centreCrop, cutOf, isTight, lossOf, arrange, subjectsFrom, keptOf, cutsOf } from '../src/index.js';
+import { image, scene, sceneMulti } from './synthetic.mjs';
 
 let fails = 0, passes = 0;
 const ok = (cond, msg) => (cond ? passes++ : (fails++, console.log('FAIL', msg)));
@@ -84,6 +84,57 @@ ok(isTight({ aspect: 1.8 }, 0.7, centreCrop()) && !isTight({ aspect: 1.4 }, 1.5,
   const frames = Array.from({ length: 6 }, (_, i) => ({ aspect: [0.8, 1.6, 1][i % 3], area: 6 - i }));
   const r = arrange(photos, frames);
   ok(new Set(r.cells.map((c) => c.photo.id)).size === 6, 'six photos, six frames, each placed once');
+}
+
+// ---- Several subjects
+const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+{
+  // Two people far apart on plain sky: two subjects, each on its own person.
+  const w = 96, h = 64;
+  const d = image(w, h, (u, v, x, y) =>
+    (u > 0.08 && u < 0.22 && v > 0.2 && v < 0.8) || (u > 0.72 && u < 0.88 && v > 0.25 && v < 0.85) ? ((x + y) % 2 ? [40, 30, 20] : [230, 200, 170]) : sky);
+  const subs = subjectsFrom(d, w, h);
+  ok(subs.length === 2, `two people give two subjects (${subs.length})`);
+  ok(subs.some((b) => b.x < 0.3 && b.x + b.w > 0.1) && subs.some((b) => b.x > 0.6), 'one on each person');
+  ok(Math.abs(subs.reduce((a, b) => a + b.weight, 0) - 1) < 0.01, 'weights add up to 1');
+}
+ok(subjectsFrom(image(80, 80, () => sky), 80, 80).length === 0, 'a flat photo has no subjects');
+{
+  // Every multi-subject scene: each true subject is found (some detected box overlaps it).
+  let found = 0, all = 0;
+  for (let s = 1; s <= 200; s++) {
+    const { data, w, h, truths } = sceneMulti(s);
+    const subs = subjectsFrom(data, w, h);
+    for (const t of truths) { all++; if (subs.some((b) => overlaps(b, t))) found++; }
+  }
+  ok(found / all >= 0.95, `found ${found} of ${all} subjects`);
+}
+{
+  // Both fit: a wide photo with two subjects near the middle, in a square frame, keeps both.
+  const photo = { aspect: 1.5, subjects: [{ x: 0.3, y: 0.3, w: 0.12, h: 0.4, weight: 0.5 }, { x: 0.55, y: 0.3, w: 0.12, h: 0.4, weight: 0.5 }] };
+  const k = keptOf(photo, 1, cropFor(photo, 1));
+  ok(k.whole === 2, `two subjects that fit are both kept (${JSON.stringify(k)})`);
+}
+{
+  // They can't both fit: the heavier is kept whole and neither is sliced in half.
+  const photo = { aspect: 1.78, subjects: [{ x: 0.04, y: 0.2, w: 0.14, h: 0.5, weight: 0.65 }, { x: 0.8, y: 0.2, w: 0.14, h: 0.5, weight: 0.35 }] };
+  const c = cropFor(photo, 0.8);
+  const cuts = cutsOf(photo, 0.8, c);
+  ok(cuts[0] === 0, `the heavier subject is kept whole (${cuts})`);
+  ok(cuts.every((x) => x === 0 || x >= 0.999), 'and nothing is cut partway');
+  ok(isTight(photo, 0.8, c) === true || cuts[1] >= 0.999, 'losing a subject is visible to the check');
+}
+{
+  // Three in a row, a frame that fits two: the two heaviest neighbours are kept whole.
+  const photo = { aspect: 2, subjects: [{ x: 0.05, y: 0.3, w: 0.15, h: 0.4, weight: 0.2 }, { x: 0.42, y: 0.3, w: 0.15, h: 0.4, weight: 0.4 }, { x: 0.7, y: 0.3, w: 0.15, h: 0.4, weight: 0.4 }] };
+  const cuts = cutsOf(photo, 1, cropFor(photo, 1));
+  ok(cuts[1] === 0 && cuts[2] === 0, `the two heaviest neighbours are kept (${cuts})`);
+}
+{
+  // One subject given as `subjects` behaves exactly like `focus`.
+  const f = { x: 0.08, y: 0.2, w: 0.22, h: 0.6 };
+  const a = cropFor({ aspect: 1.5, focus: f }, 0.8), b = cropFor({ aspect: 1.5, subjects: [{ ...f, weight: 1 }] }, 0.8);
+  ok(a.x === b.x && a.y === b.y, 'one subject in `subjects` crops like `focus`');
 }
 
 console.log(`${passes} passed, ${fails} failed`);
