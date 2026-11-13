@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>cropcompass demo</title>
-<meta name="description" content="Subject-aware cropping in the browser, with no neural network: drop a photo and compare a centre crop with cropcompass.">
+<meta name="description" content="Subject-aware cropping in the browser: drop a photo and compare a centre crop with cropcompass.">
 <style>
   :root {
     --bg: #f4f1ea; --card: #fbfaf6; --ink: #161514; --muted: #6b665e; --line: rgb(22 21 20 / 0.1);
@@ -52,22 +52,40 @@
 <body>
 <main>
   <h1>crop<span>compass</span></h1>
-  <p class="lead">Subject-aware cropping that runs in the browser in a millisecond or two, with no neural network. Drop in a photo and see where a plain centre crop cuts the subject off, and where cropcompass keeps it.</p>
+  <p class="lead">Subject-aware cropping that runs in your browser. A small machine-learning model finds the people; edges and colour find everything else. Drop in a photo and see where a plain centre crop cuts someone off, and where cropcompass keeps them.</p>
 
   <div class="bar">
     <label class="btn">Choose photos<input type="file" id="pick" accept="image/*" multiple></label>
     <button class="btn btn--soft" type="button" id="sample">Try a sample</button>
     <button class="btn btn--soft" type="button" id="sample2">Two subjects</button>
     <label class="toggle"><input type="checkbox" id="heat" checked> Show the detail map</label>
+    <label class="toggle"><input type="checkbox" id="faces" checked> Find faces with a small ML model</label>
   </div>
+  <p class="meta" id="model" aria-live="polite">Faces are found by Google's MediaPipe BlazeFace model, in your browser. The first photo downloads it once (about 9 MB), and it's cached after that.</p>
   <div class="drop" id="drop">or drop photos here. They never leave your browser.</div>
   <div id="out"></div>
 
-  <footer>Stage 1 finds the subject from edges and colour on a 96 px copy. Stage 2 slides each frame's window onto it. <a href="https://github.com/Arrox1627/cropcompass#how-it-works">How it works</a>.</footer>
+  <footer>Stage 1 finds the subjects: faces with a small ML model, everything else from edges and colour on a 96 px copy. Stage 2 slides each frame's window onto them. <a href="https://github.com/Arrox1627/cropcompass#how-it-works">How it works</a>.</footer>
 </main>
 
 <script type="module">
-  import { FOCUS_SIZE, focusFrom, subjectsFrom, detailMap, cropFor, centreCrop, cutOf, keptOf } from '../src/index.js';
+  import { FOCUS_SIZE, focusFrom, subjectsFrom, detailMap, cropFor, centreCrop, cutOf, keptOf, loadFaceDetector, combineSubjects } from '../src/index.js';
+
+  // The face model loads once, on the first photo, if the box is ticked.
+  const facesBox = document.getElementById('faces');
+  const modelNote = document.getElementById('model');
+  let detector = null;
+  function faceDetector() {
+    if (!detector) {
+      modelNote.textContent = 'Loading the face model…';
+      const t = performance.now();
+      detector = loadFaceDetector().then(
+        (d) => { modelNote.textContent = `Face model ready in ${Math.round(performance.now() - t)} ms. Photos never leave your browser.`; return d; },
+        () => { modelNote.textContent = 'The face model couldn’t load (are you offline?), so edges and colour find the subjects.'; return null; },
+      );
+    }
+    return detector;
+  }
 
   const FRAMES = [
     { name: 'Portrait 4:5', aspect: 4 / 5 },
@@ -110,15 +128,17 @@
 
   function show(url, name) {
     const img = new Image();
-    img.onload = () => {
+    img.onload = async () => {
       const { w, h, data } = small(img);
+      const det = facesBox.checked ? await faceDetector() : null;
       const t0 = performance.now();
       const focus = focusFrom(data, w, h);
-      const subjects = subjectsFrom(data, w, h);
+      const faces = det ? det.detect(img) : [];
+      const subjects = combineSubjects(faces, subjectsFrom(data, w, h));
       const ms = performance.now() - t0;
       const aspect = img.naturalWidth / img.naturalHeight;
-      // Several subjects: crop for all of them. One (or none): the single focus box.
-      const many = subjects.length > 1;
+      // Faces, or several subjects: crop for all of them. Otherwise: the single focus box.
+      const many = subjects.length > 1 || faces.length > 0;
       const photo = many ? { aspect, subjects } : { aspect, focus };
       const boxes = many ? subjects : [focus];
 
@@ -138,7 +158,7 @@
         const box = document.createElement('div');
         box.className = 'box';
         Object.assign(box.style, { left: pct(b.x), top: pct(b.y), width: pct(b.w), height: pct(b.h) });
-        box.innerHTML = `<b>${many ? `subject ${i + 1}` : 'subject'}</b>`;
+        box.innerHTML = `<b>${b.face ? `person ${i + 1}` : many ? `subject ${i + 1}` : 'subject'}</b>`;
         source.append(box);
       });
 
@@ -146,7 +166,8 @@
       left.append(source);
       const meta = document.createElement('p');
       meta.className = 'meta';
-      meta.textContent = `${img.naturalWidth} × ${img.naturalHeight} · ${many ? `${subjects.length} subjects` : 'subject'} found in ${ms.toFixed(2)} ms on a ${w} × ${h} copy`;
+      const people = faces.length ? `${faces.length} ${faces.length === 1 ? 'face' : 'faces'} (ML model)` : null;
+      meta.textContent = `${img.naturalWidth} × ${img.naturalHeight} · ${many ? `${subjects.length} subjects` : 'subject'} found in ${ms.toFixed(1)} ms${people ? `, ${people}` : ''}`;
       left.append(meta);
 
       const frames = document.createElement('div');

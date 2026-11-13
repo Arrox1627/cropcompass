@@ -1,6 +1,7 @@
 // Tests: node test/test.mjs (no dependencies). The detail box finds the detail, crops keep it in
 // view where a centre crop would lose it, and arrange() puts photos in the frames they suit.
-import { focusFrom, cleanFocus, cropFor, centreCrop, cutOf, isTight, lossOf, arrange, subjectsFrom, keptOf, cutsOf } from '../src/index.js';
+import { focusFrom, cleanFocus, cropFor, centreCrop, cutOf, isTight, lossOf, arrange, subjectsFrom, keptOf, cutsOf, facesToSubjects, combineSubjects } from '../src/index.js';
+import { mergeFaces } from '../src/faces.js';
 import { image, scene, sceneMulti } from './synthetic.mjs';
 
 let fails = 0, passes = 0;
@@ -135,6 +136,29 @@ ok(subjectsFrom(image(80, 80, () => sky), 80, 80).length === 0, 'a flat photo ha
   const f = { x: 0.08, y: 0.2, w: 0.22, h: 0.6 };
   const a = cropFor({ aspect: 1.5, focus: f }, 0.8), b = cropFor({ aspect: 1.5, subjects: [{ ...f, weight: 1 }] }, 0.8);
   ok(a.x === b.x && a.y === b.y, 'one subject in `subjects` crops like `focus`');
+}
+
+// ---- Faces (the model itself runs in a browser; these check what's done with its boxes)
+{
+  // Two faces in a 1000 × 600 photo: two head-and-shoulders subjects, the bigger face heavier.
+  const subs = facesToSubjects([{ originX: 150, originY: 150, width: 80, height: 80 }, { originX: 700, originY: 180, width: 60, height: 60 }], 1000, 600);
+  ok(subs.length === 2 && subs[0].x < 0.2 && subs[1].x > 0.6, 'two faces give two subjects, in place');
+  ok(subs[0].weight > subs[1].weight, 'the bigger face weighs more');
+  ok(subs[0].w > 80 / 1000 * 2 && subs[0].h > 80 / 600 * 2.5, 'each widened to head and shoulders');
+  ok(subs.every((b) => b.x >= 0 && b.y >= 0 && b.x + b.w <= 1.0001 && b.y + b.h <= 1.0001), 'and kept inside the photo');
+}
+{
+  // The same face found in overlapping tiles is merged; the most confident is kept.
+  const m = mergeFaces([{ originX: 100, originY: 100, width: 50, height: 50, score: 0.7 }, { originX: 104, originY: 98, width: 52, height: 50, score: 0.9 }, { originX: 400, originY: 100, width: 50, height: 50, score: 0.8 }]);
+  ok(m.length === 2 && m[0].score === 0.9, 'duplicate faces from overlapping tiles are merged');
+}
+{
+  // Faces plus a dog: the dog (no face, not overlapping) stays, lighter; a tiny speck doesn't.
+  const faces = [{ x: 0.1, y: 0.1, w: 0.2, h: 0.5, weight: 1 }];
+  const found = [{ x: 0.15, y: 0.2, w: 0.2, h: 0.4, weight: 0.5 }, { x: 0.7, y: 0.5, w: 0.2, h: 0.3, weight: 0.4 }, { x: 0.9, y: 0.0, w: 0.05, h: 0.1, weight: 0.1 }];
+  const all = combineSubjects(faces, found);
+  ok(all.length === 2 && all[0].face && !all[1].face, 'a face plus the dog; the speck and the overlap dropped');
+  ok(combineSubjects([], found) === found, 'no faces: the other subjects as they are');
 }
 
 console.log(`${passes} passed, ${fails} failed`);

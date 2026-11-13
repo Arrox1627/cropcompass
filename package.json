@@ -1,18 +1,32 @@
 {
   "name": "cropcompass",
   "version": "1.0.0",
-  "description": "Subject-aware cropping for photo layouts, with no neural network and no dependencies: find the subject, crop on it, and give each photo the frame it suits.",
+  "description": "Subject-aware cropping for photo layouts: an optional in-browser face-detection model for people, classic computer vision for everything else. Finds the subjects, crops on them, and gives each photo the frame it suits.",
   "type": "module",
   "main": "src/index.js",
   "exports": "./src/index.js",
-  "files": ["src"],
+  "files": [
+    "src"
+  ],
   "scripts": {
     "test": "node test/test.mjs",
     "bench": "node test/bench.mjs",
     "demo": "npx --yes serve ."
   },
-  "keywords": ["image-cropping", "smart-crop", "saliency", "computer-vision", "photo-layout", "object-position"],
+  "keywords": [
+    "computer-vision",
+    "face-detection",
+    "image-cropping",
+    "machine-learning",
+    "mediapipe",
+    "object-position",
+    "photo-layout",
+    "saliency",
+    "smart-crop"
+  ],
   "author": "Arnav Naahar",
   "license": "MIT",
-  "engines": { "node": ">=18" }
+  "engines": {
+    "node": ">=18"
+  }
 }
